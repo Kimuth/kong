@@ -1,13 +1,13 @@
 local cjson     = require "cjson"
 
+
 local setmetatable = setmetatable
-local tonumber     = tonumber
 local tostring     = tostring
 local require      = require
 local error        = error
 local pairs        = pairs
+local floor        = math.floor
 local type         = type
-local min          = math.min
 local log          = ngx.log
 local fmt          = string.format
 
@@ -30,6 +30,71 @@ local DAO   = {}
 DAO.__index = DAO
 
 
+local function validate_page_size(size)
+  if type(size) ~= "number" or
+    floor(size) ~= size or
+    size < 1 or
+    size > 1000 then
+    error("size must be an integer between 0 and 1000", 3)
+  end
+end
+
+
+local function validate_offset(offset)
+  if type(offset) ~= "string" then
+    error("offset must be a string", 3)
+  end
+end
+
+
+local function validate_entity(entity)
+  if type(entity) ~= "table" then
+    error("entity must be a table", 3)
+  end
+end
+
+
+local function validate_primary_key(primary_key)
+  if type(primary_key) ~= "table" then
+    error("primary_key must be a table", 3)
+  end
+end
+
+
+local function validate_foreign_key(foreign_key)
+  if type(foreign_key) ~= "table" then
+    error("foreign_key must be a table", 3)
+  end
+end
+
+
+local function validate_options(self, options, context)
+  if options == nil then
+    return
+  end
+
+  if options ~= nil and type(options) ~= "table" then
+    error("options must be a table when specified", 3)
+  end
+
+  if self.schema.ttl == true and options.ttl ~= nil then
+    if context ~= "insert" and context ~= "update" and context ~= "upsert" then
+      error(fmt("ttl option can only be used with inserts, updates and upserts, not with '%ss'",
+                tostring(context)), 3)
+    end
+
+    if type(options.ttl) ~= "number" or
+      floor(options.ttl) ~= options.ttl or
+            options.ttl  < 0 or
+            options.ttl  > 100000000 then
+      -- a bit over three years maximum to make it more safe against
+      -- integer overflow (time() + ttl)
+      error("ttl option must be an integer between 0 and 100000000", 3)
+    end
+  end
+end
+
+
 local function generate_foreign_key_methods(schema)
   local methods = {}
 
@@ -37,29 +102,20 @@ local function generate_foreign_key_methods(schema)
     if field.type == "foreign" then
       local method_name = "for_" .. name
 
-      methods[method_name] = function(self, foreign_key, size, offset)
-        if type(foreign_key) ~= "table" then
-          error("foreign_key must be a table", 2)
-        end
+      methods[method_name] = function(self, foreign_key, size, offset, options)
+        validate_foreign_key(foreign_key)
 
         if size ~= nil then
-          if type(size) ~= "number" then
-            error("size must be a number", 2)
-          end
-
-          if size < 0 then
-            error("size must be a positive number", 2)
-          end
-
-          size = min(size, 1000)
-
+          validate_page_size(size)
         else
           size = 100
         end
 
-        if offset ~= nil and type(offset) ~= "string" then
-          error("offset must be a string", 2)
+        if offset ~= nil then
+          validate_offset(offset)
         end
+
+        validate_options(self, options, "select")
 
         local ok, errors = self.schema:validate_primary_key(foreign_key)
         if not ok then
@@ -92,8 +148,9 @@ local function generate_foreign_key_methods(schema)
         end
       end
 
-      methods["select_by_" .. name] = function(self, unique_value)
+      methods["select_by_" .. name] = function(self, unique_value, options)
         validate_unique_value(unique_value)
+        validate_options(self, options, "select")
 
         local row, err_t = self.strategy:select_by_field(name, unique_value)
         if err_t then
@@ -107,8 +164,10 @@ local function generate_foreign_key_methods(schema)
         return self:row_to_entity(row)
       end
 
-      methods["update_by_" .. name] = function(self, unique_value, entity)
+      methods["update_by_" .. name] = function(self, unique_value, entity, options)
         validate_unique_value(unique_value)
+        validate_entity(entity)
+        validate_options(self, options, "update")
 
         local entity_to_update, err = self.schema:process_auto_fields(entity, "update")
         if not entity_to_update then
@@ -123,7 +182,7 @@ local function generate_foreign_key_methods(schema)
         end
 
         local row, err_t = self.strategy:update_by_field(name, unique_value,
-                                                         entity_to_update)
+                                                         entity_to_update, options)
         if not row then
           return nil, tostring(err_t), err_t
         end
@@ -138,8 +197,10 @@ local function generate_foreign_key_methods(schema)
         return row
       end
 
-      methods["upsert_by_" .. name] = function(self, unique_value, entity)
+      methods["upsert_by_" .. name] = function(self, unique_value, entity, options)
         validate_unique_value(unique_value)
+        validate_entity(entity)
+        validate_options(self, options, "upsert")
 
         local entity_to_upsert, err = self.schema:process_auto_fields(entity, "upsert")
         if not entity_to_upsert then
@@ -156,7 +217,7 @@ local function generate_foreign_key_methods(schema)
         entity_to_upsert[name] = nil
 
         local row, err_t = self.strategy:upsert_by_field(name, unique_value,
-          entity_to_upsert)
+                                                         entity_to_upsert, options)
         if not row then
           return nil, tostring(err_t), err_t
         end
@@ -171,10 +232,11 @@ local function generate_foreign_key_methods(schema)
         return row
       end
 
-      methods["delete_by_" .. name] = function(self, unique_value)
+      methods["delete_by_" .. name] = function(self, unique_value, options)
         validate_unique_value(unique_value)
+        validate_options(self, options, "delete")
 
-        local entity, err, err_t = self["select_by_" .. name](self, unique_value)
+        local entity, err, err_t = self["select_by_" .. name](self, unique_value, options)
         if err then
           return nil, err, err_t
         end
@@ -182,7 +244,7 @@ local function generate_foreign_key_methods(schema)
           return true
         end
 
-        local _, err_t = self.strategy:delete_by_field(name, unique_value)
+        local _, err_t = self.strategy:delete_by_field(name, unique_value, options)
         if err_t then
           return nil, tostring(err_t), err_t
         end
@@ -221,10 +283,9 @@ function _M.new(db, schema, strategy, errors)
 end
 
 
-function DAO:select(primary_key)
-  if type(primary_key) ~= "table" then
-    error("primary_key must be a table", 2)
-  end
+function DAO:select(primary_key, options)
+  validate_primary_key(primary_key)
+  validate_options(self, options, "select")
 
   local ok, errors = self.schema:validate_primary_key(primary_key)
   if not ok then
@@ -232,7 +293,7 @@ function DAO:select(primary_key)
     return nil, tostring(err_t), err_t
   end
 
-  local row, err_t = self.strategy:select(primary_key)
+  local row, err_t = self.strategy:select(primary_key, options)
   if err_t then
     return nil, tostring(err_t), err_t
   end
@@ -245,24 +306,20 @@ function DAO:select(primary_key)
 end
 
 
-function DAO:page(size, offset)
-  size = tonumber(size == nil and 100 or size)
-
-  if not size then
-    error("size must be a number", 2)
+function DAO:page(size, offset, options)
+  if size ~= nil then
+    validate_page_size(size)
+  else
+    size = 100
   end
 
-  size = min(size, 1000)
-
-  if size < 0 then
-    error("size must be positive (> 0)", 2)
+  if offset ~= nil then
+    validate_offset(offset)
   end
 
-  if offset ~= nil and type(offset) ~= "string" then
-    error("offset must be a string", 2)
-  end
+  validate_options(self, options, "select")
 
-  local rows, err_t, offset = self.strategy:page(size, offset)
+  local rows, err_t, offset = self.strategy:page(size, offset, options)
   if err_t then
     return nil, tostring(err_t), err_t
   end
@@ -276,20 +333,16 @@ function DAO:page(size, offset)
 end
 
 
-function DAO:each(size)
-  size = tonumber(size == nil and 100 or size)
-
-  if not size then
-    error("size must be a number", 2)
+function DAO:each(size, options)
+  if size ~= nil then
+    validate_page_size(size)
+  else
+    size = 100
   end
 
-  size = min(size, 1000)
+  validate_options(self, options, "select")
 
-  if size < 0 then
-    error("size must be positive (> 0)", 2)
-  end
-
-  local next_row = self.strategy:each(size)
+  local next_row = self.strategy:each(size, options)
 
   return function()
     local err_t
@@ -317,10 +370,9 @@ function DAO:each(size)
 end
 
 
-function DAO:insert(entity)
-  if type(entity) ~= "table" then
-    error("entity must be a table", 2)
-  end
+function DAO:insert(entity, options)
+  validate_entity(entity)
+  validate_options(self, options, "insert")
 
   local entity_to_insert, err = self.schema:process_auto_fields(entity, "insert")
   if not entity_to_insert then
@@ -328,13 +380,13 @@ function DAO:insert(entity)
     return nil, tostring(err_t), err_t
   end
 
-  local ok, errors = self.schema:validate(entity_to_insert)
+  local ok, errors = self.schema:validate_insert(entity_to_insert)
   if not ok then
     local err_t = self.errors:schema_violation(errors)
     return nil, tostring(err_t), err_t
   end
 
-  local row, err_t = self.strategy:insert(entity_to_insert)
+  local row, err_t = self.strategy:insert(entity_to_insert, options)
   if not row then
     return nil, tostring(err_t), err_t
   end
@@ -350,14 +402,10 @@ function DAO:insert(entity)
 end
 
 
-function DAO:update(primary_key, entity)
-  if type(primary_key) ~= "table" then
-    error("primary_key must be a table", 2)
-  end
-
-  if type(entity) ~= "table" then
-    error("entity must be a table", 2)
-  end
+function DAO:update(primary_key, entity, options)
+  validate_primary_key(primary_key)
+  validate_entity(entity)
+  validate_options(self, options, "update")
 
   local ok, errors = self.schema:validate_primary_key(primary_key)
   if not ok then
@@ -371,13 +419,13 @@ function DAO:update(primary_key, entity)
     return nil, tostring(err_t), err_t
   end
 
-  local ok, errors = self.schema:validate_update(entity_to_update)
+  ok, errors = self.schema:validate_update(entity_to_update)
   if not ok then
     local err_t = self.errors:schema_violation(errors)
     return nil, tostring(err_t), err_t
   end
 
-  local row, err_t = self.strategy:update(primary_key, entity_to_update)
+  local row, err_t = self.strategy:update(primary_key, entity_to_update, options)
   if not row then
     return nil, tostring(err_t), err_t
   end
@@ -393,14 +441,10 @@ function DAO:update(primary_key, entity)
 end
 
 
-function DAO:upsert(primary_key, entity)
-  if type(primary_key) ~= "table" then
-    error("primary_key must be a table", 2)
-  end
-
-  if type(entity) ~= "table" then
-    error("entity must be a table", 2)
-  end
+function DAO:upsert(primary_key, entity, options)
+  validate_primary_key(primary_key)
+  validate_entity(entity)
+  validate_options(self, options, "upsert")
 
   local ok, errors = self.schema:validate_primary_key(primary_key)
   if not ok then
@@ -414,13 +458,13 @@ function DAO:upsert(primary_key, entity)
     return nil, tostring(err_t), err_t
   end
 
-  local ok, errors = self.schema:validate_upsert(entity_to_upsert)
+  ok, errors = self.schema:validate_upsert(entity_to_upsert)
   if not ok then
     local err_t = self.errors:schema_violation(errors)
     return nil, tostring(err_t), err_t
   end
 
-  local row, err_t = self.strategy:upsert(primary_key, entity_to_upsert)
+  local row, err_t = self.strategy:upsert(primary_key, entity_to_upsert, options)
   if not row then
     return nil, tostring(err_t), err_t
   end
@@ -436,10 +480,9 @@ function DAO:upsert(primary_key, entity)
 end
 
 
-function DAO:delete(primary_key)
-  if type(primary_key) ~= "table" then
-    error("primary_key must be a table", 2)
-  end
+function DAO:delete(primary_key, options)
+  validate_primary_key(primary_key)
+  validate_options(self, options, "delete")
 
   local ok, errors = self.schema:validate_primary_key(primary_key)
   if not ok then
@@ -447,7 +490,7 @@ function DAO:delete(primary_key)
     return nil, tostring(err_t), err_t
   end
 
-  local entity, err, err_t = self:select(primary_key)
+  local entity, err, err_t = self:select(primary_key, options)
   if err then
     return nil, err, err_t
   end
@@ -455,7 +498,7 @@ function DAO:delete(primary_key)
     return true
   end
 
-  local _, err_t = self.strategy:delete(primary_key)
+  local _, err_t = self.strategy:delete(primary_key, options)
   if err_t then
     return nil, tostring(err_t), err_t
   end

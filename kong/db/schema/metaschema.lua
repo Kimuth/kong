@@ -139,7 +139,6 @@ local meta_errors = {
   ENDPOINT_KEY = "value must be a field name",
   ENDPOINT_KEY_UNIQUE = "endpoint key must be a unique field",
   TTL_RESERVED = "ttl is a reserved field name when ttl is enabled",
-  TTL_CREATED_AT = "ttl can only be enabled on entities that have a 'created_at' timestamp field",
 }
 
 
@@ -321,24 +320,12 @@ local MetaSchema = Schema.new({
     end
 
     if schema.ttl then
-      local found = false
       for _, item in ipairs(schema.fields) do
         local k = next(item)
         if k == "ttl" then
           errors["ttl"] = meta_errors.TTL_RESERVED
           break
         end
-
-        if k == "created_at" then
-          local field = item[k]
-          if field.timestamp and field.auto then
-            found = true
-          end
-        end
-      end
-
-      if not errors["ttl"] and not found then
-        errors["ttl"] = meta_errors.TTL_CREATED_AT
       end
     end
 
@@ -368,4 +355,3 @@ end
 
 
 return MetaSchema
-

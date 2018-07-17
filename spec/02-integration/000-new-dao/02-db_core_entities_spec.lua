@@ -508,19 +508,25 @@ for _, strategy in helpers.each_strategy() do
         it("errors on invalid size", function()
           assert.has_error(function()
             db.routes:page("")
-          end, "size must be a number")
+          end, "size must be an integer between 0 and 1000")
           assert.has_error(function()
             db.routes:page({})
-          end, "size must be a number")
+          end, "size must be an integer between 0 and 1000")
           assert.has_error(function()
             db.routes:page(true)
-          end, "size must be a number")
+          end, "size must be an integer between 0 and 1000")
           assert.has_error(function()
             db.routes:page(false)
-          end, "size must be a number")
+          end, "size must be an integer between 0 and 1000")
           assert.has_error(function()
             db.routes:page(-1)
-          end, "size must be positive (> 0)")
+          end, "size must be an integer between 0 and 1000")
+          assert.has_error(function()
+            db.routes:page(1001)
+          end, "size must be an integer between 0 and 1000")
+          assert.has_error(function()
+            db.routes:page(5.5)
+          end, "size must be an integer between 0 and 1000")
         end)
 
         it("errors on invalid offset", function()
@@ -582,14 +588,6 @@ for _, strategy in helpers.each_strategy() do
             assert.is_nil(err)
             assert.is_table(rows)
             assert.equal(100, #rows)
-          end)
-
-          it("max page_size = 1000", function()
-            local rows, err, err_t = db.routes:page(1002)
-            assert.is_nil(err_t)
-            assert.is_nil(err)
-            assert.is_table(rows)
-            assert.equal(1000, #rows)
           end)
         end)
 
@@ -750,11 +748,11 @@ for _, strategy in helpers.each_strategy() do
         it("errors on invalid arg", function()
           assert.has_error(function()
             db.routes:each(false)
-          end, "size must be a number")
+          end, "size must be an integer between 0 and 1000")
 
           assert.has_error(function()
             db.routes:each(-1)
-          end, "size must be positive (> 0)")
+          end, "size must be an integer between 0 and 1000")
         end)
 
         -- I/O
@@ -1429,11 +1427,11 @@ for _, strategy in helpers.each_strategy() do
 
           assert.has_error(function()
             db.routes:for_service({ id = 123 }, "100")
-          end, "size must be a number")
+          end, "size must be an integer between 0 and 1000")
 
           assert.has_error(function()
             db.routes:for_service({ id = 123 }, -100)
-          end, "size must be a positive number")
+          end, "size must be an integer between 0 and 1000")
 
           assert.has_error(function()
             db.routes:for_service({ id = 123 }, 100, 12345)
@@ -1535,15 +1533,6 @@ for _, strategy in helpers.each_strategy() do
               assert.is_nil(err_t)
               assert.is_nil(err)
               assert.equal(100, #rows)
-            end)
-
-            it("max page_size = 1000", function()
-              local rows, err, err_t = db.routes:for_service({
-                id = service.id,
-              }, 1002)
-              assert.is_nil(err_t)
-              assert.is_nil(err)
-              assert.equal(1000, #rows)
             end)
           end)
 

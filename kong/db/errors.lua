@@ -32,6 +32,7 @@ local ERRORS            = {
   NOT_FOUND             =  6, -- WHERE clause leads nowhere (HTTP 404)
   INVALID_OFFSET        =  7, -- page(size, offset) is invalid
   DATABASE_ERROR        =  8, -- connection refused or DB error (HTTP 500)
+  INVALID_SIZE          =  9, -- page(size, offset) is invalid
 }
 
 
@@ -47,6 +48,7 @@ local ERRORS_NAMES               = {
   [ERRORS.NOT_FOUND]             = "not found",
   [ERRORS.INVALID_OFFSET]        = "invalid offset",
   [ERRORS.DATABASE_ERROR]        = "database error",
+  [ERRORS.INVALID_SIZE]          = "invalid size",
 }
 
 
