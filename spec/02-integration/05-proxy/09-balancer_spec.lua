@@ -455,7 +455,7 @@ local function poll_wait_health(upstream_name, host, port, value, admin_port)
     end
     ngx.sleep(0.01) -- poll-wait
   end
-  assert(false, "timed out waiting for " .. host .. ":" .. port " in " ..
+  assert(false, "timed out waiting for " .. host .. ":" .. port .. " in " ..
                 upstream_name .. " to become " .. value)
 end
 

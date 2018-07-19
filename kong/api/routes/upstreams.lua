@@ -32,7 +32,10 @@ local function post_health(self, db, is_healthy)
     return endpoints.handle_error(err_t)
   end
 
-  db.targets:post_health(upstream, target, is_healthy)
+  local ok, err = db.targets:post_health(upstream, target, is_healthy)
+  if not ok then
+    responses.send_HTTP_BAD_REQUEST(err)
+  end
 
   return responses.send_HTTP_NO_CONTENT()
 end

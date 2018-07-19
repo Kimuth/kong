@@ -85,7 +85,7 @@ local function generate_foreign_key_methods(schema)
         return entities, nil, nil, new_offset
       end
 
-    elseif field.unique or schema.endpoint_key == field.name then
+    elseif field.unique or schema.endpoint_key == name then
       methods["select_by_" .. name] = function(self, unique_value)
         local ok, err = schema:validate_field(field, unique_value)
         if not ok then
