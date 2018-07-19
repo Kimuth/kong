@@ -49,7 +49,7 @@ local function healthchecks_config(config)
 end
 
 
-local TEST_LOG = false -- extra verbose logging of test server
+local TEST_LOG = true -- extra verbose logging of test server
 
 
 local TIMEOUT = -1  -- marker for timeouts in http_server
@@ -784,7 +784,7 @@ for _, strategy in helpers.each_strategy() do
 
           end)
 
-          it("#perform passive health checks", function()
+          it("#wip1 perform passive health checks", function()
 
             for nfails = 1, 3 do
 
@@ -1040,7 +1040,7 @@ for _, strategy in helpers.each_strategy() do
 
           end)
 
-          it("perform passive health checks -- manual recovery", function()
+          it("#wip perform passive health checks -- manual recovery", function()
 
             for nfails = 1, 3 do
               -- configure healthchecks
@@ -1226,7 +1226,7 @@ for _, strategy in helpers.each_strategy() do
             assert.are.equal(0, fails)
           end)
 
-          it("perform passive health checks -- send #timeouts", function()
+          it("#wip perform passive health checks -- send #timeouts", function()
 
             -- configure healthchecks
             local upstream_name = add_upstream({
@@ -1449,7 +1449,7 @@ for _, strategy in helpers.each_strategy() do
               assert.are.equal(requests * 0.6, count2)
             end)
 
-            it("failure due to targets all 0 weight", function()
+            it("#wip failure due to targets all 0 weight", function()
               local requests = SLOTS * 2 -- go round the balancer twice
 
               local upstream_name = add_upstream()
